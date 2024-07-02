@@ -140,13 +140,6 @@ public class Commands
         AudioDelayRemove        = new RelayCommandSimple(player.Audio.DelayRemove);
         AudioDelayRemove2       = new RelayCommandSimple(player.Audio.DelayRemove2);
 
-        SubtitlesDelaySet       = new RelayCommand(SubtitlesDelaySetAction);
-        SubtitlesDelaySet2      = new RelayCommand(SubtitlesDelaySetAction2);
-        SubtitlesDelayAdd       = new RelayCommandSimple(player.Subtitles.DelayAdd);
-        SubtitlesDelayAdd2      = new RelayCommandSimple(player.Subtitles.DelayAdd2);
-        SubtitlesDelayRemove    = new RelayCommandSimple(player.Subtitles.DelayRemove);
-        SubtitlesDelayRemove2   = new RelayCommandSimple(player.Subtitles.DelayRemove2);
-
         ForceIdle               = new RelayCommandSimple(player.Activity.ForceIdle);
         ForceActive             = new RelayCommandSimple(player.Activity.ForceActive);
         ForceFullActive         = new RelayCommandSimple(player.Activity.ForceFullActive);
@@ -173,10 +166,6 @@ public class Commands
         => player.Config.Audio.Delay = int.Parse(delay.ToString()) * (long)10000;
     public void AudioDelaySetAction2(object delay)
         => player.Config.Audio.Delay += int.Parse(delay.ToString()) * (long)10000;
-    public void SubtitlesDelaySetAction(object delay)
-        => player.Config.Subtitles.Delay = int.Parse(delay.ToString()) * (long)10000;
-    public void SubtitlesDelaySetAction2(object delay)
-        => player.Config.Subtitles.Delay += int.Parse(delay.ToString()) * (long)10000;
 
     public void TakeSnapshotAction() => Task.Run(() => { try { player.TakeSnapshotToFile(); } catch { } });
 

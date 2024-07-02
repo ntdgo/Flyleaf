@@ -17,10 +17,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\FlyleafLib.Controls.WPF\FlyleafLib.Controls.WPF.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
     <_DeploymentManifestIconFile Remove="Flyleaf.ico" />
   </ItemGroup>
 

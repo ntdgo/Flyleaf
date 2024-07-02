@@ -49,7 +49,6 @@ public class Config : NotifyPropertyChanged
         {
             Audio       = Audio.Clone(),
             Video       = Video.Clone(),
-            Subtitles   = Subtitles.Clone(),
             Demuxer     = Demuxer.Clone(),
             Decoder     = Decoder.Clone(),
             Player      = Player.Clone()
@@ -102,7 +101,6 @@ public class Config : NotifyPropertyChanged
         Decoder.player  = player;
         Audio.player    = player;
         Video.player    = player;
-        Subtitles.player= player;
     }
 
     /// <summary>
@@ -128,7 +126,6 @@ public class Config : NotifyPropertyChanged
     public DecoderConfig    Decoder     { get; set; } = new DecoderConfig();
     public VideoConfig      Video       { get; set; } = new VideoConfig();
     public AudioConfig      Audio       { get; set; } = new AudioConfig();
-    public SubtitlesConfig  Subtitles   { get; set; } = new SubtitlesConfig();
     public DataConfig       Data        { get; set; } = new DataConfig();
 
     public SerializableDictionary<string, SerializableDictionary<string, string>>
@@ -280,8 +277,6 @@ public class Config : NotifyPropertyChanged
         // Offsets
         public long     AudioDelayOffset            { get; set; } =  100 * 10000;
         public long     AudioDelayOffset2           { get; set; } = 1000 * 10000;
-        public long     SubtitlesDelayOffset        { get; set; } =  100 * 10000;
-        public long     SubtitlesDelayOffset2       { get; set; } = 1000 * 10000;
         public long     SeekOffset                  { get; set; } = 5 * (long)1000 * 10000;
         public long     SeekOffset2                 { get; set; } = 15 * (long)1000 * 10000;
         public long     SeekOffset3                 { get; set; } = 30 * (long)1000 * 10000;
@@ -300,11 +295,9 @@ public class Config : NotifyPropertyChanged
 
             demuxer.FormatOpt       = new SerializableDictionary<string, string>();
             demuxer.AudioFormatOpt  = new SerializableDictionary<string, string>();
-            demuxer.SubtitlesFormatOpt = new SerializableDictionary<string, string>();
 
             foreach (var kv in FormatOpt) demuxer.FormatOpt.Add(kv.Key, kv.Value);
             foreach (var kv in AudioFormatOpt) demuxer.AudioFormatOpt.Add(kv.Key, kv.Value);
-            foreach (var kv in SubtitlesFormatOpt) demuxer.SubtitlesFormatOpt.Add(kv.Key, kv.Value);
 
             demuxer.player = null;
             demuxer.config = null;
@@ -453,8 +446,6 @@ public class Config : NotifyPropertyChanged
         public SerializableDictionary<string, string>
                                 AudioFormatOpt  { get; set; } = DefaultVideoFormatOpt();
 
-        public SerializableDictionary<string, string>
-                                SubtitlesFormatOpt  { get; set; } = DefaultVideoFormatOpt();
 
         public static SerializableDictionary<string, string> DefaultVideoFormatOpt()
         {
@@ -487,7 +478,7 @@ public class Config : NotifyPropertyChanged
         }
 
         public SerializableDictionary<string, string> GetFormatOptPtr(MediaType type)
-            => type == MediaType.Video ? FormatOpt : type == MediaType.Audio ? AudioFormatOpt : SubtitlesFormatOpt;
+            => type == MediaType.Video ? FormatOpt : AudioFormatOpt;
     }
     public class DecoderConfig : NotifyPropertyChanged
     {
@@ -517,10 +508,6 @@ public class Config : NotifyPropertyChanged
         /// </summary>
         public int              MaxAudioFrames  { get; set; } = 10;
 
-        /// <summary>
-        /// Maximum subtitle frames to be decoded
-        /// </summary>
-        public int              MaxSubsFrames   { get; set; } = 1;
 
         /// <summary>
         /// Maximum data frames to be decoded
@@ -562,11 +549,9 @@ public class Config : NotifyPropertyChanged
                                 AudioCodecOpt       { get; set; } = new();
         public SerializableDictionary<string, string>
                                 VideoCodecOpt       { get; set; } = new();
-        public SerializableDictionary<string, string>
-                                SubtitlesCodecOpt   { get; set; } = new();
 
         public SerializableDictionary<string, string> GetCodecOptPtr(MediaType type)
-            => type == MediaType.Video ? VideoCodecOpt : type == MediaType.Audio ? AudioCodecOpt : SubtitlesCodecOpt;
+            => type == MediaType.Video ? VideoCodecOpt : AudioCodecOpt;
     }
     public class VideoConfig : NotifyPropertyChanged
     {
@@ -782,77 +767,7 @@ public class Config : NotifyPropertyChanged
         public List<Language>   Languages { get { _Languages ??= GetSystemLanguages(); return _Languages; } set => _Languages = value; }
         List<Language> _Languages;
     }
-    public class SubtitlesConfig : NotifyPropertyChanged
-    {
-        public SubtitlesConfig Clone()
-        {
-            SubtitlesConfig subs = new();
-            subs = (SubtitlesConfig) MemberwiseClone();
 
-            subs.Languages = new List<Language>();
-            if (Languages != null) foreach(var lang in Languages) subs.Languages.Add(lang);
-
-            subs.player = null;
-
-            return subs;
-        }
-
-        internal Player player;
-
-        /// <summary>
-        /// Subtitle delay ticks (will be reseted to 0 for every new subtitle stream)
-        /// </summary>
-        public long             Delay               { get => _Delay; set { if (player != null && !player.Subtitles.IsOpened) return; if (Set(ref _Delay, value)) player?.ReSync(player.decoder.SubtitlesStream); } }
-        long _Delay;
-        internal void SetDelay(long delay)          => Set(ref _Delay, delay, true, nameof(Delay));
-
-        /// <summary>
-        /// Whether subtitles should be allowed
-        /// </summary>
-        public bool             Enabled             { get => _Enabled; set { if(Set(ref _Enabled, value)) if (value) player?.Subtitles.Enable(); else player?.Subtitles.Disable(); } }
-        bool _Enabled = true;
-        internal void SetEnabled(bool enabled)      => Set(ref _Enabled, enabled, true, nameof(Enabled));
-
-        /// <summary>
-        /// Subtitle languages preference by priority
-        /// </summary>
-        public List<Language>   Languages           { get { _Languages ??= GetSystemLanguages(); return _Languages; } set => _Languages = value; }
-        List<Language> _Languages;
-
-        /// <summary>
-        /// Whether to use local search plugins (see also <see cref="SearchLocalOnInputType"/>)
-        /// </summary>
-        public bool             SearchLocal         { get => _SearchLocal; set => Set(ref _SearchLocal, value); }
-        bool _SearchLocal = false;
-
-        /// <summary>
-        /// Allowed input types to be searched locally for subtitles (empty list allows all types)
-        /// </summary>
-        public List<InputType>  SearchLocalOnInputType
-                                                    { get; set; } = new List<InputType>() { InputType.File, InputType.UNC, InputType.Torrent };
-
-        /// <summary>
-        /// Whether to use online search plugins (see also <see cref="SearchOnlineOnInputType"/>)
-        /// </summary>
-        public bool             SearchOnline        { get => _SearchOnline; set { Set(ref _SearchOnline, value); if (player != null && player.Video.isOpened) Task.Run(() => { if (player != null && player.Video.isOpened) player.decoder.SearchOnlineSubtitles(); }); } }
-        bool _SearchOnline = false;
-
-        /// <summary>
-        /// Allowed input types to be searched online for subtitles (empty list allows all types)
-        /// </summary>
-        public List<InputType>  SearchOnlineOnInputType
-                                                    { get; set; } = new List<InputType>() { InputType.File, InputType.Torrent };
-
-        /// <summary>
-        /// Subtitles parser (can be used for custom parsing)
-        /// </summary>
-        [XmlIgnore]
-        #if NET5_0_OR_GREATER
-        [JsonIgnore]
-        #endif
-        public Action<SubtitlesFrame>
-                                Parser              { get; set; } = ParseSubtitles.Parse;
-    }
     public class DataConfig : NotifyPropertyChanged
     {
         public DataConfig Clone()

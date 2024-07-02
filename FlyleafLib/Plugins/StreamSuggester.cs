@@ -10,7 +10,7 @@ using FlyleafLib.MediaFramework.MediaStream;
 
 namespace FlyleafLib.Plugins;
 
-public unsafe class StreamSuggester : PluginBase, ISuggestPlaylistItem, ISuggestAudioStream, ISuggestVideoStream, ISuggestSubtitlesStream, ISuggestSubtitles, ISuggestBestExternalSubtitles
+public unsafe class StreamSuggester : PluginBase, ISuggestPlaylistItem, ISuggestAudioStream, ISuggestVideoStream
 {
     public new int Priority { get; set; } = 3000;
 
@@ -99,56 +99,4 @@ public unsafe class StreamSuggester : PluginBase, ISuggestPlaylistItem, ISuggest
     public PlaylistItem SuggestItem()
         => Playlist.Items[0];
 
-    public void SuggestSubtitles(out SubtitlesStream stream, out ExternalSubtitlesStream extStream)
-    {
-        stream = null;
-        extStream = null;
-
-        List<Language> langs = new();
-
-        foreach (var lang in Config.Subtitles.Languages)
-            langs.Add(lang);
-
-        langs.Add(Language.Unknown);
-
-        var extStreams = Selected.ExternalSubtitlesStreams.OrderBy(x => x.Language.ToString()).ThenByDescending(x => x.Rating).ThenBy(x => x.Downloaded);
-
-        foreach (var lang in langs)
-        {
-            foreach(var embStream in decoder.VideoDemuxer.SubtitlesStreams)
-                if (embStream.Language == lang)
-                {
-                    stream = embStream;
-                    return;
-                }
-
-            foreach(var extStream2 in extStreams)
-                if (extStream2.Language == lang)
-                {
-                    extStream = extStream2;
-                    return;
-                }
-        }
-    }
-
-    public ExternalSubtitlesStream SuggestBestExternalSubtitles()
-    {
-        var extStreams = Selected.ExternalSubtitlesStreams.OrderBy(x => x.Language.ToString()).ThenByDescending(x => x.Rating).ThenBy(x => x.Downloaded);
-
-        foreach(var extStream in extStreams)
-            if (extStream.Language == Config.Subtitles.Languages[0])
-                return extStream;
-
-        return null;
-    }
-
-    public SubtitlesStream SuggestSubtitles(ObservableCollection<SubtitlesStream> streams, List<Language> langs)
-    {
-        foreach(var lang in langs)
-            foreach(var stream in streams)
-                if (lang == stream.Language)
-                    return stream;
-
-        return null;
-    }
 }

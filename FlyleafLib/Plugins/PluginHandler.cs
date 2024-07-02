@@ -41,22 +41,6 @@ public class PluginHandler
                                     PluginsSuggestExternalAudio     { get; private set; }
     public Dictionary<string, ISuggestExternalVideo>
                                     PluginsSuggestExternalVideo     { get; private set; }
-
-    public Dictionary<string, ISuggestSubtitlesStream>
-                                    PluginsSuggestSubtitlesStream   { get; private set; }
-    public Dictionary<string, ISuggestSubtitles>
-                                    PluginsSuggestSubtitles         { get; private set; }
-    public Dictionary<string, ISuggestBestExternalSubtitles>
-                                    PluginsSuggestBestExternalSubtitles
-                                                                    { get; private set; }
-
-    public Dictionary<string, IDownloadSubtitles>
-                                    PluginsDownloadSubtitles        { get; private set; }
-
-    public Dictionary<string, ISearchLocalSubtitles>
-                                    PluginsSearchLocalSubtitles     { get; private set; }
-    public Dictionary<string, ISearchOnlineSubtitles>
-                                    PluginsSearchOnlineSubtitles    { get; private set; }
     #endregion
 
     #region Initialize
@@ -105,17 +89,9 @@ public class PluginHandler
 
         PluginsSuggestAudioStream       = new Dictionary<string, ISuggestAudioStream>();
         PluginsSuggestVideoStream       = new Dictionary<string, ISuggestVideoStream>();
-        PluginsSuggestSubtitlesStream   = new Dictionary<string, ISuggestSubtitlesStream>();
-        PluginsSuggestSubtitles         = new Dictionary<string, ISuggestSubtitles>();
 
         PluginsSuggestExternalAudio     = new Dictionary<string, ISuggestExternalAudio>();
         PluginsSuggestExternalVideo     = new Dictionary<string, ISuggestExternalVideo>();
-        PluginsSuggestBestExternalSubtitles
-                                        = new Dictionary<string, ISuggestBestExternalSubtitles>();
-
-        PluginsSearchLocalSubtitles     = new Dictionary<string, ISearchLocalSubtitles>();
-        PluginsSearchOnlineSubtitles    = new Dictionary<string, ISearchOnlineSubtitles>();
-        PluginsDownloadSubtitles        = new Dictionary<string, IDownloadSubtitles>();
 
         foreach (var plugin in Plugins.Values)
             LoadPluginInterfaces(plugin);
@@ -131,16 +107,9 @@ public class PluginHandler
 
         if (plugin is ISuggestAudioStream) PluginsSuggestAudioStream.Add(plugin.Name, (ISuggestAudioStream)plugin);
         if (plugin is ISuggestVideoStream) PluginsSuggestVideoStream.Add(plugin.Name, (ISuggestVideoStream)plugin);
-        if (plugin is ISuggestSubtitlesStream) PluginsSuggestSubtitlesStream.Add(plugin.Name, (ISuggestSubtitlesStream)plugin);
-        if (plugin is ISuggestSubtitles) PluginsSuggestSubtitles.Add(plugin.Name, (ISuggestSubtitles)plugin);
 
         if (plugin is ISuggestExternalAudio) PluginsSuggestExternalAudio.Add(plugin.Name, (ISuggestExternalAudio)plugin);
         if (plugin is ISuggestExternalVideo) PluginsSuggestExternalVideo.Add(plugin.Name, (ISuggestExternalVideo)plugin);
-        if (plugin is ISuggestBestExternalSubtitles) PluginsSuggestBestExternalSubtitles.Add(plugin.Name, (ISuggestBestExternalSubtitles)plugin);
-
-        if (plugin is ISearchLocalSubtitles) PluginsSearchLocalSubtitles.Add(plugin.Name, (ISearchLocalSubtitles)plugin);
-        if (plugin is ISearchOnlineSubtitles) PluginsSearchOnlineSubtitles.Add(plugin.Name, (ISearchOnlineSubtitles)plugin);
-        if (plugin is IDownloadSubtitles) PluginsDownloadSubtitles.Add(plugin.Name, (IDownloadSubtitles)plugin);
     }
     #endregion
 
@@ -376,131 +345,6 @@ public class PluginHandler
             return;
 
         extStream = SuggestExternalAudio();
-    }
-    #endregion
-
-    #region Subtitles
-    public OpenSubtitlesResults OpenSubtitles(string url)
-    {
-        var plugins = PluginsOpenSubtitles.Values.OrderBy(x => x.Priority);
-        foreach(var plugin in plugins)
-        {
-            var res = plugin.Open(url);
-            if (res == null)
-                continue;
-
-            if (res.Error != null)
-                return res;
-
-            OpenedSubtitlesPlugin = plugin;
-            Log.Info($"[{plugin.Name}] Open Subtitles Success");
-
-            return res;
-        }
-
-        return null;
-    }
-
-    public bool SearchLocalSubtitles()
-    {
-        if (!Playlist.Selected.SearchedLocal && Config.Subtitles.SearchLocal && (Config.Subtitles.SearchLocalOnInputType == null || Config.Subtitles.SearchLocalOnInputType.Count == 0 || Config.Subtitles.SearchLocalOnInputType.Contains(Playlist.InputType)))
-        {
-            Log.Debug("[Subtitles] Searching Local");
-            var plugins = PluginsSearchLocalSubtitles.Values.OrderBy(x => x.Priority);
-            foreach(var plugin in plugins)
-            {
-                if (Interrupt)
-                    return false;
-
-                plugin.SearchLocalSubtitles();
-            }
-
-            Playlist.Selected.SearchedLocal = true;
-
-            return true;
-        }
-
-        return false;
-    }
-    public void SearchOnlineSubtitles()
-    {
-        if (!Playlist.Selected.SearchedOnline && Config.Subtitles.SearchOnline && (Config.Subtitles.SearchOnlineOnInputType == null || Config.Subtitles.SearchOnlineOnInputType.Count == 0 || Config.Subtitles.SearchOnlineOnInputType.Contains(Playlist.InputType)))
-        {
-            Log.Debug("[Subtitles] Searching Online");
-            var plugins = PluginsSearchOnlineSubtitles.Values.OrderBy(x => x.Priority);
-            foreach(var plugin in plugins)
-            {
-                if (Interrupt)
-                    return;
-
-                plugin.SearchOnlineSubtitles();
-            }
-
-            Playlist.Selected.SearchedOnline = true;
-        }
-    }
-    public bool DownloadSubtitles(ExternalSubtitlesStream extStream)
-    {
-        bool res = false;
-
-        var plugins = PluginsDownloadSubtitles.Values.OrderBy(x => x.Priority);
-        foreach(var plugin in plugins)
-            if (res = plugin.DownloadSubtitles(extStream))
-            {
-                extStream.Downloaded = true;
-                return res;
-            }
-
-        return res;
-    }
-
-    public ExternalSubtitlesStream SuggestBestExternalSubtitles()
-    {
-        var plugins = PluginsSuggestBestExternalSubtitles.Values.OrderBy(x => x.Priority);
-        foreach(var plugin in plugins)
-        {
-            if (Interrupt)
-                return null;
-
-            var extStream = plugin.SuggestBestExternalSubtitles();
-            if (extStream != null)
-                return extStream;
-        }
-
-        return null;
-    }
-    public void SuggestSubtitles(out SubtitlesStream stream, out ExternalSubtitlesStream extStream)
-    {
-        stream = null;
-        extStream = null;
-
-        var plugins = PluginsSuggestSubtitles.Values.OrderBy(x => x.Priority);
-        foreach(var plugin in plugins)
-        {
-            if (Interrupt)
-                return;
-
-            plugin.SuggestSubtitles(out stream, out extStream);
-            if (stream != null || extStream != null)
-                return;
-        }
-    }
-    public SubtitlesStream SuggestSubtitles(ObservableCollection<SubtitlesStream> streams, List<Language> langs)
-    {
-        if (streams == null || streams.Count == 0) return null;
-
-        var plugins = PluginsSuggestSubtitlesStream.Values.OrderBy(x => x.Priority);
-        foreach(var plugin in plugins)
-        {
-            if (Interrupt)
-                return null;
-
-            var stream = plugin.SuggestSubtitles(streams, langs);
-            if (stream != null)
-                return stream;
-        }
-
-        return null;
     }
     #endregion
 

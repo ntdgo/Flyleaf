@@ -38,5 +38,5 @@ public class ExternalStream : DemuxerInput
     public int      OpenedCounter   { get; set; }
 
     public MediaType
-                    Type => this is ExternalAudioStream ? MediaType.Audio : this is ExternalVideoStream ? MediaType.Video : MediaType.Subs;
+                    Type => this is ExternalAudioStream ? MediaType.Audio : MediaType.Video;
 }

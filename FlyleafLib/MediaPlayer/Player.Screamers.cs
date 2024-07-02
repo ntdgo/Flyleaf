@@ -97,9 +97,6 @@ unsafe partial class Player
         if (sFramePrev == null || sFramePrev.timestamp > vFrame.timestamp || (sFramePrev.timestamp + (sFramePrev.duration * (long)10000)) < vFrame.timestamp)
         {
             sFramePrev = null;
-            Subtitles.subsText = "";
-            if (Subtitles._SubsText != "")
-                UIAdd(() => Subtitles.SubsText = Subtitles.SubsText);
         }
 
         UIAll();
@@ -133,18 +130,6 @@ unsafe partial class Player
             {
                 AudioDemuxer.Start();
                 AudioDecoder.Start();
-            }
-        }
-
-        if (Subtitles.isOpened && Config.Subtitles.Enabled)
-        {
-            lock (lockSubtitles)
-            if (SubtitlesDecoder.OnVideoDemuxer)
-                SubtitlesDecoder.Start();
-            else if (!decoder.RequiresResync)
-            {
-                SubtitlesDemuxer.Start();
-                SubtitlesDecoder.Start();
             }
         }
 
@@ -310,9 +295,6 @@ unsafe partial class Player
                 if (sFramePrev != null)
                 {
                     sFramePrev = null;
-                    Subtitles.subsText = "";
-                    if (Subtitles._SubsText != "")
-                        UI(() => Subtitles.SubsText = Subtitles.SubsText);
                 }
 
                 decoder.PauseDecoders(); // TBR: Required to avoid gettings packets between Seek and ShowFrame which causes resync issues
@@ -376,9 +358,6 @@ unsafe partial class Player
 
             if (aFrame == null && !isAudioSwitch)
                 AudioDecoder.Frames.TryDequeue(out aFrame);
-
-            if (sFrame == null && !isSubsSwitch )
-                SubtitlesDecoder.Frames.TryPeek(out sFrame);
 
             if (dFrame == null && !isDataSwitch)
                 DataDecoder.Frames.TryPeek(out dFrame);
@@ -564,27 +543,21 @@ unsafe partial class Player
             if (sFramePrev != null && ((sFramePrev.timestamp - startTicks + (sFramePrev.duration * (long)10000)) / speed) - (long) (sw.ElapsedTicks * SWFREQ_TO_TICKS) < 0)
             {
                 sFramePrev = null;
-                Subtitles.subsText = "";
-                UI(() => Subtitles.SubsText = Subtitles.SubsText);
             }
 
             if (sFrame != null)
             {
                 if (Math.Abs(sDistanceMs - sleepMs) < 30 || (sDistanceMs < -30 && sFrame.duration + sDistanceMs > 0))
                 {
-                    Subtitles.subsText = sFrame.text;
-                    UI(() => Subtitles.SubsText = Subtitles.SubsText);
                     
                     sFramePrev = sFrame;
                     sFrame = null;
-                    SubtitlesDecoder.Frames.TryDequeue(out var devnull);
                 }
                 else if (sDistanceMs < -30)
                 {
                     if (CanDebug) Log.Debug($"sDistanceMs = {sDistanceMs}");
 
                     sFrame = null;
-                    SubtitlesDecoder.Frames.TryDequeue(out var devnull);
                 }
             }
 

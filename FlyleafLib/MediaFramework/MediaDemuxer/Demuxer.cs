@@ -74,8 +74,6 @@ public unsafe class Demuxer : RunThreadBase
                                     AudioStreams    { get; private set; } = new ObservableCollection<AudioStream>();
     public ObservableCollection<VideoStream>        
                                     VideoStreams    { get; private set; } = new ObservableCollection<VideoStream>();
-    public ObservableCollection<SubtitlesStream>    
-                                    SubtitlesStreams{ get; private set; } = new ObservableCollection<SubtitlesStream>();
     public ObservableCollection<DataStream>
                                     DataStreams     { get; private set; } = new ObservableCollection<DataStream>();
     readonly object lockStreams = new();
@@ -86,7 +84,6 @@ public unsafe class Demuxer : RunThreadBase
 
     public AudioStream              AudioStream     { get; private set; }
     public VideoStream              VideoStream     { get; private set; }
-    public SubtitlesStream          SubtitlesStream { get; private set; }
     public DataStream               DataStream      { get; private set; }
 
     // Audio/Video Stream's HLSPlaylist
@@ -195,7 +192,6 @@ public unsafe class Demuxer : RunThreadBase
             BindingOperations.EnableCollectionSynchronization(Programs,         lockStreams);
             BindingOperations.EnableCollectionSynchronization(AudioStreams,     lockStreams);
             BindingOperations.EnableCollectionSynchronization(VideoStreams,     lockStreams);
-            BindingOperations.EnableCollectionSynchronization(SubtitlesStreams, lockStreams);
             BindingOperations.EnableCollectionSynchronization(DataStreams,      lockStreams);
         });
 
@@ -275,14 +271,12 @@ public unsafe class Demuxer : RunThreadBase
             {
                 AudioStreams.Clear();
                 VideoStreams.Clear();
-                SubtitlesStreams.Clear();
                 DataStreams.Clear();
                 Programs.Clear();
             }
             EnabledStreams.Clear();
             AudioStream = null;
             VideoStream = null;
-            SubtitlesStream = null;
             DataStream = null;
             queryParams = null;
             queryParamsStrCached = "";
@@ -513,8 +507,6 @@ public unsafe class Demuxer : RunThreadBase
                 return error = $"No audio / video stream found";
             else if (Type == MediaType.Audio && AudioStreams.Count == 0)
                 return error = $"No audio stream found";
-            else if (Type == MediaType.Subs && SubtitlesStreams.Count == 0)
-                return error = $"No subtitles stream found";
 
             packet = av_packet_alloc();
             Status = Status.Stopped;
@@ -586,7 +578,7 @@ public unsafe class Demuxer : RunThreadBase
     private void OpenFormat(string url, AVInputFormat* inFmt, Dictionary<string, string> opt, out int ret)
     {
         AVDictionary* avopt = null;
-        var curOpt = Type == MediaType.Video ? Config.FormatOpt : (Type == MediaType.Audio ? Config.AudioFormatOpt : Config.SubtitlesFormatOpt);
+        var curOpt = Type == MediaType.Video ? Config.FormatOpt : Config.AudioFormatOpt;
 
         if (curOpt != null)
             foreach (var optKV in curOpt)
@@ -679,7 +671,6 @@ public unsafe class Demuxer : RunThreadBase
         if (CanDebug && dump != "") Log.Debug($"Chapters\r\n\r\n{dump}");
 
         bool audioHasEng = false;
-        bool subsHasEng = false;
 
         lock (lockStreams)
         {  
@@ -712,13 +703,6 @@ public unsafe class Demuxer : RunThreadBase
 
                         break;
 
-                    case AVMEDIA_TYPE_SUBTITLE:
-                        SubtitlesStreams.Add(new SubtitlesStream(this, fmtCtx->streams[i]));
-                        AVStreamToStream.Add(fmtCtx->streams[i]->index, SubtitlesStreams[^1]);
-                        subsHasEng = SubtitlesStreams[^1].Language == Language.English;
-                        
-                        break;
-
                     case AVMEDIA_TYPE_DATA:
                         DataStreams.Add(new DataStream(this, fmtCtx->streams[i]));
                         AVStreamToStream.Add(fmtCtx->streams[i]->index, DataStreams[^1]);
@@ -735,11 +719,6 @@ public unsafe class Demuxer : RunThreadBase
                 for (int i=0; i<AudioStreams.Count; i++)
                     if (AudioStreams[i].Language.Culture == null && AudioStreams[i].Language.OriginalInput == null)
                         AudioStreams[i].Language = Language.English;
-
-            if (!subsHasEng && Type == MediaType.Video)
-                for (int i=0; i<SubtitlesStreams.Count; i++)
-                    if (SubtitlesStreams[i].Language.Culture == null && SubtitlesStreams[i].Language.OriginalInput == null)
-                        SubtitlesStreams[i].Language = Language.English;
 
             if (fmtCtx->nb_programs > 0)
             {
@@ -810,21 +789,6 @@ public unsafe class Demuxer : RunThreadBase
                     }
 
                     AudioPackets.Dequeue();
-                    av_packet_free(&packet);
-                }
-
-                while (SubtitlesPackets.Count > 0)
-                {
-                    var packet = SubtitlesPackets.Peek();
-                    if (packet->pts != AV_NOPTS_VALUE && ticks < (packet->pts + packet->duration) * SubtitlesStream.Timebase)
-                    {
-                        if (Type == MediaType.Subs)
-                            found = true;
-
-                        break;
-                    }
-
-                    SubtitlesPackets.Dequeue();
                     av_packet_free(&packet);
                 }
 
@@ -1402,11 +1366,6 @@ public unsafe class Demuxer : RunThreadBase
 
                     break;
 
-                case MediaType.Subs:
-                    SubtitlesStream = (SubtitlesStream) stream;
-
-                    break;
-
                 case MediaType.Data:
                     DataStream = (DataStream) stream;
 
@@ -1414,7 +1373,7 @@ public unsafe class Demuxer : RunThreadBase
             }
 
             if (UseAVSPackets)
-                CurPackets = VideoStream != null ? VideoPackets : (AudioStream != null ? AudioPackets : (SubtitlesStream != null ? SubtitlesPackets : DataPackets));
+                CurPackets = VideoStream != null ? VideoPackets : (AudioStream != null ? AudioPackets :  DataPackets);
 
             if (CanInfo) Log.Info($"[{stream.Type} #{stream.StreamIndex}] Enabled");
         }
@@ -1479,12 +1438,6 @@ public unsafe class Demuxer : RunThreadBase
                     VideoPackets.Clear();
                     break;
 
-                case MediaType.Subs:
-                    SubtitlesStream = null;
-                    SubtitlesPackets.Clear();
-
-                    break;
-
                 case MediaType.Data:
                     DataStream = null;
                     DataPackets.Clear();
@@ -1506,8 +1459,6 @@ public unsafe class Demuxer : RunThreadBase
                 DisableStream(AudioStream);
             else if (stream.Type == MediaType.Video)
                 DisableStream(VideoStream);
-            else if (stream.Type == MediaType.Subs)
-                DisableStream(SubtitlesStream);
             else
                 DisableStream(DataStream);
 
@@ -1601,7 +1552,6 @@ public unsafe class Demuxer : RunThreadBase
 
         foreach(var stream in VideoStreams)     dump += "\r\n" + stream.GetDump();
         foreach(var stream in AudioStreams)     dump += "\r\n" + stream.GetDump();
-        foreach(var stream in SubtitlesStreams) dump += "\r\n" + stream.GetDump();
 
         if (fmtCtx->nb_programs > 0)
             dump += $"\r\n[Programs] {fmtCtx->nb_programs}";

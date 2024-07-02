@@ -388,16 +388,6 @@ public class KeysConfig
             case KeyBindingAction.ToggleVideoAcceleration:
                 return player.Video.ToggleVideoAcceleration;
 
-            case KeyBindingAction.SubtitlesDelayAdd:
-                return player.Subtitles.DelayAdd;
-            case KeyBindingAction.SubtitlesDelayRemove:
-                return player.Subtitles.DelayRemove;
-            case KeyBindingAction.SubtitlesDelayAdd2:
-                return player.Subtitles.DelayAdd2;
-            case KeyBindingAction.SubtitlesDelayRemove2:
-                return player.Subtitles.DelayRemove2;
-            case KeyBindingAction.ToggleSubtitles:
-                return player.Subtitles.Toggle;
 
             case KeyBindingAction.OpenFromClipboard:
                 return player.OpenFromClipboard;

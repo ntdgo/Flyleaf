@@ -22,7 +22,6 @@ public partial class DecoderContext
 
     public event EventHandler<OpenAudioStreamCompletedArgs>             OpenAudioStreamCompleted;
     public event EventHandler<OpenVideoStreamCompletedArgs>             OpenVideoStreamCompleted;
-    public event EventHandler<OpenSubtitlesStreamCompletedArgs>         OpenSubtitlesStreamCompleted;
     public event EventHandler<OpenDataStreamCompletedArgs>              OpenDataStreamCompleted;
 
     public event EventHandler<OpenExternalAudioStreamCompletedArgs>     OpenExternalAudioStreamCompleted;
@@ -79,12 +78,7 @@ public partial class DecoderContext
         public new VideoStream OldStream=> (VideoStream)base.OldStream;
         public OpenVideoStreamCompletedArgs(VideoStream stream = null, VideoStream oldStream = null, string error = null): base(stream, oldStream, error) { }
     }
-    public class OpenSubtitlesStreamCompletedArgs : StreamOpenedArgs
-    {
-        public new SubtitlesStream Stream   => (SubtitlesStream)base.Stream;
-        public new SubtitlesStream OldStream=> (SubtitlesStream)base.OldStream;
-        public OpenSubtitlesStreamCompletedArgs(SubtitlesStream stream = null, SubtitlesStream oldStream = null, string error = null): base(stream, oldStream, error) { }
-    }
+
     public class OpenDataStreamCompletedArgs : StreamOpenedArgs
     {
         public new DataStream Stream => (DataStream)base.Stream;
@@ -193,19 +187,7 @@ public partial class DecoderContext
         if (CanInfo) Log.Info($"[OpenVideoStream] #{(args.OldStream != null ? args.OldStream.StreamIndex.ToString() : "_")} => #{(args.Stream != null ? args.Stream.StreamIndex.ToString() : "_")}{(!args.Success ? " [Error: " + args.Error  + "]": "")}");
         OpenVideoStreamCompleted?.Invoke(this, args);
     }
-    private void OnOpenSubtitlesStreamCompleted(OpenSubtitlesStreamCompletedArgs args = null)
-    {
-        if (shouldDispose)
-        {
-            Dispose();
-            return;
-        }
 
-        ClosedSubtitlesStream = null;
-
-        if (CanInfo) Log.Info($"[OpenSubtitlesStream] #{(args.OldStream != null ? args.OldStream.StreamIndex.ToString() : "_")} => #{(args.Stream != null ? args.Stream.StreamIndex.ToString() : "_")}{(!args.Success ? " [Error: " + args.Error  + "]": "")}");
-        OpenSubtitlesStreamCompleted?.Invoke(this, args);
-    }
     private void OnOpenDataStreamCompleted(OpenDataStreamCompletedArgs args = null)
     {
         if (shouldDispose)
@@ -309,30 +291,6 @@ public partial class DecoderContext
             OnOpenCompleted(args);
         }
     }
-    public new OpenSubtitlesCompletedArgs OpenSubtitles(string url)
-    {
-        OpenSubtitlesCompletedArgs args = new();
-
-        try
-        {
-            var res = base.OpenSubtitles(url);
-            args.Error = res == null ? "No external subtitles stream found" : res.Error;
-
-            if (args.Success)
-                args.Error = Open(res.ExternalSubtitlesStream).Error;
-
-            return args;
-
-        } catch (Exception e)
-        {
-            args.Error = !args.Success ? args.Error + "\r\n" + e.Message : e.Message;
-            return args;
-        }
-        finally
-        {
-            OnOpenSubtitles(args);
-        }
-    }
     public OpenSessionCompletedArgs Open(Session session)
     {
         OpenSessionCompletedArgs args = new(session);
@@ -381,13 +339,10 @@ public partial class DecoderContext
                 return args;
             }
 
-            if (session.ExternalSubtitlesUrl != null)
-                OpenSubtitles(session.ExternalSubtitlesUrl);
             else if (session.SubtitlesStream != -1)
                 Open(VideoDemuxer.AVStreamToStream[session.SubtitlesStream]);
 
             Config.Audio.SetDelay(session.AudioDelay);
-            Config.Subtitles.SetDelay(session.SubtitlesDelay);
 
             if (session.CurTime > 1 * (long)1000 * 10000)
                 Seek(session.CurTime / 10000);
@@ -469,14 +424,6 @@ public partial class DecoderContext
                 return args;
             }
 
-            if (defaultSubtitles && Config.Subtitles.Enabled)
-            {
-                if (Playlist.Selected.ExternalSubtitlesStream != null)
-                    Open(Playlist.Selected.ExternalSubtitlesStream);
-                else
-                    OpenSuggestedSubtitles();
-            }
-
             if (Config.Data.Enabled)
             {
                 OpenSuggestedData();
@@ -514,7 +461,7 @@ public partial class DecoderContext
 
                 demuxer = VideoDemuxer;
             }
-            else if (extStream is ExternalAudioStream)
+            else
             {
                 args = new OpenExternalAudioStreamCompletedArgs((ExternalAudioStream) extStream, Playlist.Selected.ExternalAudioStream);
 
@@ -528,23 +475,6 @@ public partial class DecoderContext
 
                 demuxer = AudioDemuxer;
             }
-            else
-            {
-                args = new OpenExternalSubtitlesStreamCompletedArgs((ExternalSubtitlesStream) extStream, Playlist.Selected.ExternalSubtitlesStream);
-
-                if (args.OldExtStream != null)
-                    args.OldExtStream.Enabled = false;
-
-                Playlist.Selected.ExternalSubtitlesStream = (ExternalSubtitlesStream) extStream;
-
-                if (!Playlist.Selected.ExternalSubtitlesStream.Downloaded)
-                    DownloadSubtitles(Playlist.Selected.ExternalSubtitlesStream);
-                    
-                foreach(var plugin in Plugins.Values)
-                    plugin.OnOpenExternalSubtitles();
-
-                demuxer = SubtitlesDemuxer;
-            }
 
             // Open external stream
             args.Error = OpenDemuxerInput(demuxer, extStream);
@@ -556,8 +486,6 @@ public partial class DecoderContext
             foreach (var embStream in demuxer.VideoStreams)
                 embStream.ExternalStream = extStream;
             foreach (var embStream in demuxer.AudioStreams)
-                embStream.ExternalStream = extStream;
-            foreach (var embStream in demuxer.SubtitlesStreams)
                 embStream.ExternalStream = extStream;
 
             // Open embedded stream
@@ -575,12 +503,6 @@ public partial class DecoderContext
                     suggestedStream = streamIndex == -1 ? SuggestVideo(demuxer.VideoStreams) : demuxer.AVStreamToStream[streamIndex];
                 else if (demuxer.Type == MediaType.Audio)
                     suggestedStream = streamIndex == -1 ? SuggestAudio(demuxer.AudioStreams) : demuxer.AVStreamToStream[streamIndex];
-                else if (demuxer.Type == MediaType.Subs)
-                {
-                    System.Collections.Generic.List<Language> langs = Config.Subtitles.Languages.ToList();
-                    langs.Add(Language.Unknown);
-                    suggestedStream = streamIndex == -1 ? SuggestSubtitles(demuxer.SubtitlesStreams, langs) : demuxer.AVStreamToStream[streamIndex];
-                }
                 else
                 {
                     suggestedStream = demuxer.AVStreamToStream[streamIndex];
@@ -620,8 +542,6 @@ public partial class DecoderContext
         => Open(stream, defaultAudio);
     public StreamOpenedArgs OpenAudioStream(AudioStream stream)
         => Open(stream);
-    public StreamOpenedArgs OpenSubtitlesStream(SubtitlesStream stream)
-        => Open(stream);
     public StreamOpenedArgs OpenDataStream(DataStream stream)
         => Open(stream);
     private StreamOpenedArgs Open(StreamBase stream, bool defaultAudio = false)
@@ -633,10 +553,10 @@ public partial class DecoderContext
             lock (stream.Demuxer.lockActions)
             lock (stream.Demuxer.lockFmtCtx)
             {
-                var oldStream = stream.Type == MediaType.Video ? VideoStream : (stream.Type == MediaType.Audio ? AudioStream : (stream.Type == MediaType.Subs ? SubtitlesStream : (StreamBase)DataStream));
+                var oldStream = stream.Type == MediaType.Video ? VideoStream : (stream.Type == MediaType.Audio ? AudioStream  : (StreamBase)DataStream);
 
-                // Close external demuxers when opening embedded
-                if (stream.Demuxer.Type == MediaType.Video)
+                    // Close external demuxers when opening embedded
+                    if (stream.Demuxer.Type == MediaType.Video)
                 {
                     // TBR: if (stream.Type == MediaType.Video) | We consider that we can't have Embedded and External Video Streams at the same time
                     if (stream.Type == MediaType.Audio) // TBR: && VideoStream != null)
@@ -648,15 +568,7 @@ public partial class DecoderContext
                             Playlist.Selected.ExternalAudioStream = null;
                         }
                     }
-                    else if (stream.Type == MediaType.Subs)
-                    {
-                        if (!EnableDecoding) SubtitlesDemuxer.Dispose();
-                        if (Playlist.Selected.ExternalSubtitlesStream != null)
-                        {
-                            Playlist.Selected.ExternalSubtitlesStream.Enabled = false;
-                            Playlist.Selected.ExternalSubtitlesStream = null;
-                        }
-                    }
+                    
                     else if (stream.Type == MediaType.Data)
                     {
                         if (!EnableDecoding) DataDemuxer.Dispose();
@@ -683,8 +595,6 @@ public partial class DecoderContext
                             ? (args = new OpenVideoStreamCompletedArgs((VideoStream)stream, (VideoStream)oldStream, $"Failed to open video stream #{stream.StreamIndex}\r\n{ret}"))
                             : stream.Type == MediaType.Audio
                             ? (args = new OpenAudioStreamCompletedArgs((AudioStream)stream, (AudioStream)oldStream, $"Failed to open audio stream #{stream.StreamIndex}\r\n{ret}"))
-                            : stream.Type == MediaType.Subs
-                            ? (args = new OpenSubtitlesStreamCompletedArgs((SubtitlesStream)stream, (SubtitlesStream)oldStream, $"Failed to open subtitles stream #{stream.StreamIndex}\r\n{ret}"))
                             : (args = new OpenDataStreamCompletedArgs((DataStream)stream, (DataStream)oldStream, $"Failed to open data stream #{stream.StreamIndex}\r\n{ret}"));
                         }
                 }
@@ -726,8 +636,6 @@ public partial class DecoderContext
                     ? (args = new OpenVideoStreamCompletedArgs((VideoStream)stream, (VideoStream)oldStream))
                     : stream.Type == MediaType.Audio
                     ? (args = new OpenAudioStreamCompletedArgs((AudioStream)stream, (AudioStream)oldStream))
-                    : stream.Type == MediaType.Subs
-                    ? (args = new OpenSubtitlesStreamCompletedArgs((SubtitlesStream)stream, (SubtitlesStream)oldStream))
                     : (args = new OpenDataStreamCompletedArgs((DataStream)stream, (DataStream)oldStream));
                 }
         } catch(Exception e)
@@ -739,8 +647,6 @@ public partial class DecoderContext
                 OnOpenVideoStreamCompleted((OpenVideoStreamCompletedArgs)args);
             else if (stream.Type == MediaType.Audio)
                 OnOpenAudioStreamCompleted((OpenAudioStreamCompletedArgs)args);
-            else if (stream.Type == MediaType.Subs)
-                OnOpenSubtitlesStreamCompleted((OpenSubtitlesStreamCompletedArgs)args);
             else
                 OnOpenDataStreamCompleted((OpenDataStreamCompletedArgs)args);
         }
@@ -799,128 +705,6 @@ public partial class DecoderContext
             error = Open(extStream).Error;
 
         return error;
-    }
-    public void OpenSuggestedSubtitles()
-    {
-        long sessionId = OpenItemCounter;
-
-        try
-        {
-            // 1. Closed / History / Remember last user selection? Probably application must handle this
-            if (ClosedSubtitlesStream != null)
-            {
-                Log.Debug("[Subtitles] Found previously closed stream");
-
-                var extStream = ClosedSubtitlesStream.Item1;
-                if (extStream != null)
-                {
-                    Open(extStream, false, ClosedSubtitlesStream.Item2 >= 0 ? ClosedSubtitlesStream.Item2 : -1);
-                    return;
-                }
-
-                var stream = ClosedSubtitlesStream.Item2 >= 0 ? (SubtitlesStream)VideoDemuxer.AVStreamToStream[ClosedSubtitlesStream.Item2] : null;
-
-                if (stream != null)
-                {
-                    Open(stream);
-                    return;
-                }
-                else if (extStream != null)
-                {
-                    Open(extStream);
-                    return;
-                }
-                else
-                    ClosedSubtitlesStream = null;
-            }
-
-            // High Suggest (first lang priority + high rating + already converted/downloaded)
-            // 2. Check embedded steams for high suggest
-            if (Config.Subtitles.Languages.Count > 0)
-            {
-                foreach (var stream in VideoDemuxer.SubtitlesStreams)
-                    if (stream.Language == Config.Subtitles.Languages[0])
-                    {
-                        Log.Debug("[Subtitles] Found high suggested embedded stream");
-                        Open(stream);
-                        return;
-                    }
-            }
-
-            // 3. Check external streams for high suggest
-            if (Playlist.Selected.ExternalSubtitlesStreams.Count > 0)
-            {
-                var extStream = SuggestBestExternalSubtitles();
-                if (extStream != null)
-                {
-                    Log.Debug("[Subtitles] Found high suggested external stream");
-                    Open(extStream);
-                    return;
-                }
-            }
-
-            // 4. Prevent Local/Online Search for 'small' duration videos
-            if (VideoDemuxer.Duration < TimeSpan.FromMinutes(25).Ticks)
-                return;
-
-        } catch (Exception e)
-        {
-            Log.Debug($"OpenSuggestedSubtitles canceled? [{e.Message}]");
-            return;
-        }
-
-        Task.Run(() =>
-        {
-            try
-            {
-                if (sessionId != OpenItemCounter)
-                {
-                    Log.Debug("OpenSuggestedSubtitles canceled");
-                    return;
-                }
-
-                ExternalSubtitlesStream extStream;
-
-                // 4. Search offline if allowed (not async)
-                if (SearchLocalSubtitles())
-                {
-                    // 4.1 Check external streams for high suggest (again for the new additions if any)
-                    extStream = SuggestBestExternalSubtitles();
-                    if (extStream != null)
-                    {
-                        Log.Debug("[Subtitles] Found high suggested external stream");
-                        Open(extStream);
-                        return;
-                    }
-                }
-
-                if (sessionId != OpenItemCounter)
-                {
-                    Log.Debug("OpenSuggestedSubtitles canceled");
-                    return;
-                }
-
-                // 5. Search online if allowed (not async)
-                SearchOnlineSubtitles();
-
-                if (sessionId != OpenItemCounter)
-                {
-                    Log.Debug("OpenSuggestedSubtitles canceled");
-                    return;
-                }
-
-                // 6. (Any) Check embedded/external streams for config languages (including 'undefined')
-                SuggestSubtitles(out var stream, out extStream);
-
-                if (stream != null)
-                    Open(stream);
-                else if (extStream != null)
-                    Open(extStream);
-            } catch (Exception e)
-            {
-                Log.Debug($"OpenSuggestedSubtitles canceled? [{e.Message}]");
-            }
-        });
     }
     public string OpenSuggestedData()
     {
@@ -1027,18 +811,7 @@ public partial class DecoderContext
         VideoDecoder.Dispose(true);
         VideoDecoder.Renderer?.ClearScreen();
     }
-    public void CloseSubtitles()
-    {
-        ClosedSubtitlesStream = new Tuple<ExternalSubtitlesStream, int>(Playlist.Selected.ExternalSubtitlesStream, SubtitlesStream != null ? SubtitlesStream.StreamIndex : -1);
 
-        if (Playlist.Selected.ExternalSubtitlesStream != null)
-        {
-            Playlist.Selected.ExternalSubtitlesStream.Enabled = false;
-            Playlist.Selected.ExternalSubtitlesStream = null;
-        }
-
-        SubtitlesDecoder.Dispose(true);
-    }
     public void CloseData()
     {
         DataDecoder.Dispose(true);

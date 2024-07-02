@@ -37,8 +37,6 @@ public abstract unsafe class DecoderBase : RunThreadBase
             Type = MediaType.Video;
         else if (this is AudioDecoder)
             Type = MediaType.Audio;
-        else if (this is SubtitlesDecoder)
-            Type = MediaType.Subs;
         else if (this is DataDecoder)
             Type = MediaType.Data;
 
@@ -137,7 +135,7 @@ public abstract unsafe class DecoderBase : RunThreadBase
                         {
                             if (prevStream.Demuxer.Type == MediaType.Video)
                                 prevStream.Demuxer.DisableStream(prevStream);
-                            else if (prevStream.Demuxer.Type == MediaType.Audio || prevStream.Demuxer.Type == MediaType.Subs)
+                            else if (prevStream.Demuxer.Type == MediaType.Audio)
                                 prevStream.Demuxer.Dispose();
 
                             stream.Demuxer.EnableStream(stream);

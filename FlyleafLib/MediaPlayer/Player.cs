@@ -50,11 +50,6 @@ public unsafe partial class Player : NotifyPropertyChanged, IDisposable
     public Video                Video               { get; private set; }
 
     /// <summary>
-    /// Player's Subtitles
-    /// </summary>
-    public Subtitles            Subtitles           { get; private set; }
-
-    /// <summary>
     /// Player's Data
     /// </summary>
     public Data                 Data                { get; private set; }
@@ -84,12 +79,6 @@ public unsafe partial class Player : NotifyPropertyChanged, IDisposable
     public VideoDecoder         VideoDecoder        => decoder.VideoDecoder;
 
     /// <summary>
-    /// Subtitles Decoder
-    /// (Normally you should not access this directly)
-    /// </summary>
-    public SubtitlesDecoder     SubtitlesDecoder    => decoder.SubtitlesDecoder;
-
-    /// <summary>
     /// Data Decoder
     /// (Normally you should not access this directly)
     /// </summary>
@@ -112,12 +101,6 @@ public unsafe partial class Player : NotifyPropertyChanged, IDisposable
     /// (Normally you should not access this directly)
     /// </summary>
     public Demuxer              VideoDemuxer        => decoder.VideoDemuxer;
-
-    /// <summary>
-    /// Subtitles Demuxer
-    /// (Normally you should not access this directly)
-    /// </summary>
-    public Demuxer              SubtitlesDemuxer    => decoder.SubtitlesDemuxer;
 
     /// <summary>
     /// Data Demuxer
@@ -274,11 +257,9 @@ public unsafe partial class Player : NotifyPropertyChanged, IDisposable
             speed                   = newValue;
             decoder.RequiresResync  = true;
             requiresBuffering       = true;
-            Subtitles.subsText      = "";
 
             UI(() =>
             {
-                Subtitles.SubsText = Subtitles.SubsText;
                 Raise(nameof(Speed));
             });
         }
@@ -340,9 +321,6 @@ public unsafe partial class Player : NotifyPropertyChanged, IDisposable
                 Pause();
                 dFrame = null;
                 sFrame = null;
-                Subtitles.subsText = "";
-                if (Subtitles._SubsText != "")
-                    UI(() => Subtitles.SubsText = Subtitles.SubsText);
                 decoder.StopThreads();
                 decoder.Flush();
 
@@ -405,7 +383,6 @@ public unsafe partial class Player : NotifyPropertyChanged, IDisposable
 
     bool isVideoSwitch;
     bool isAudioSwitch;
-    bool isSubsSwitch;
     bool isDataSwitch;
     #endregion
 
@@ -428,7 +405,6 @@ public unsafe partial class Player : NotifyPropertyChanged, IDisposable
         Activity    = new Activity(this);
         Audio       = new Audio(this);
         Video       = new Video(this);
-        Subtitles   = new Subtitles(this);
         Data        = new Data(this);
         Commands    = new Commands(this);
 
@@ -437,7 +413,6 @@ public unsafe partial class Player : NotifyPropertyChanged, IDisposable
         if (Config.Player.Usage == Usage.Audio)
         {
             Config.Video.Enabled = false;
-            Config.Subtitles.Enabled = false;
         }
 
         decoder = new DecoderContext(Config, PlayerId) { Tag = this };
@@ -450,12 +425,10 @@ public unsafe partial class Player : NotifyPropertyChanged, IDisposable
         
         decoder.OpenAudioStreamCompleted               += Decoder_OpenAudioStreamCompleted;
         decoder.OpenVideoStreamCompleted               += Decoder_OpenVideoStreamCompleted;
-        decoder.OpenSubtitlesStreamCompleted           += Decoder_OpenSubtitlesStreamCompleted;
         decoder.OpenDataStreamCompleted                += Decoder_OpenDataStreamCompleted;
 
         decoder.OpenExternalAudioStreamCompleted       += Decoder_OpenExternalAudioStreamCompleted;
         decoder.OpenExternalVideoStreamCompleted       += Decoder_OpenExternalVideoStreamCompleted;
-        decoder.OpenExternalSubtitlesStreamCompleted   += Decoder_OpenExternalSubtitlesStreamCompleted;
 
         AudioDecoder.CBufAlloc      = () => { if (aFrame != null) aFrame.dataPtr = IntPtr.Zero; aFrame = null; Audio.ClearBuffer(); aFrame = null; };
         AudioDecoder.CodecChanged   = Decoder_AudioCodecChanged;
@@ -533,7 +506,6 @@ public unsafe partial class Player : NotifyPropertyChanged, IDisposable
         ResetMe();
         Video.Reset();
         Audio.Reset();
-        Subtitles.Reset();
         UIAll();
     }
     private void Initialize(Status status = Status.Stopped, bool andDecoder = true, bool isSwitch = false)

@@ -24,7 +24,6 @@ unsafe partial class Player
 
     public event EventHandler<OpenAudioStreamCompletedArgs>             OpenAudioStreamCompleted;
     public event EventHandler<OpenVideoStreamCompletedArgs>             OpenVideoStreamCompleted;
-    public event EventHandler<OpenSubtitlesStreamCompletedArgs>         OpenSubtitlesStreamCompleted;
     public event EventHandler<OpenDataStreamCompletedArgs>              OpenDataStreamCompleted;
 
     public event EventHandler<OpenExternalAudioStreamCompletedArgs>     OpenExternalAudioStreamCompleted;
@@ -44,8 +43,6 @@ unsafe partial class Player
         => OpenAudioStreamCompleted?.Invoke(this, args);
     private void OnOpenVideoStreamCompleted(OpenVideoStreamCompletedArgs args = null)
         => OpenVideoStreamCompleted?.Invoke(this, args);
-    private void OnOpenSubtitlesStreamCompleted(OpenSubtitlesStreamCompletedArgs args = null)
-        => OpenSubtitlesStreamCompleted?.Invoke(this, args);
     private void OnOpenDataStreamCompleted(OpenDataStreamCompletedArgs args = null)
         => OpenDataStreamCompleted?.Invoke(this, args);
 
@@ -102,24 +99,6 @@ unsafe partial class Player
         });
         UIAll();
     }
-    private void Decoder_OpenSubtitlesStreamCompleted(object sender, OpenSubtitlesStreamCompletedArgs e)
-    {
-        Config.Subtitles.SetDelay(0);
-        Subtitles.Refresh();
-        UIAll();
-
-        if (IsPlaying && Subtitles.isOpened && Config.Subtitles.Enabled) // TBR (First run mainly with -from DecoderContext->OpenSuggestedSubtitles-> Task.Run causes late open, possible resync?)
-        {
-            lock (lockSubtitles)
-                if (SubtitlesDecoder.OnVideoDemuxer)
-                    SubtitlesDecoder.Start();
-                else// if (!decoder.RequiresResync)
-                {
-                    SubtitlesDemuxer.Start();
-                    SubtitlesDecoder.Start();
-                }
-        }
-    }
 
     private void Decoder_OpenDataStreamCompleted(object sender, OpenDataStreamCompletedArgs e)
     {
@@ -155,11 +134,6 @@ unsafe partial class Player
             UIAdd(() => CanPlay = CanPlay);
             UIAll();
         }
-    }
-    private void Decoder_OpenExternalSubtitlesStreamCompleted(object sender, OpenExternalSubtitlesStreamCompletedArgs e)
-    {
-        if (e.Success)
-            lock (lockSubtitles) ReSync(decoder.SubtitlesStream, decoder.GetCurTimeMs());
     }
     #endregion
 
@@ -227,37 +201,6 @@ unsafe partial class Player
             OnOpenCompleted(args);
         }
     }
-    private OpenCompletedArgs OpenSubtitles(string url)
-    {
-        OpenCompletedArgs args = new(url, null, null, true);
-
-        try
-        {
-            if (CanInfo) Log.Info($"Opening subtitles {url}");
-
-            if (!Video.IsOpened)
-            {
-                args.Error = "Cannot open subtitles without video";
-                return args;
-            }
-
-            Config.Subtitles.SetEnabled(true);
-            args.Error = decoder.OpenSubtitles(url).Error;
-
-            if (args.Success)
-                ReSync(decoder.SubtitlesStream);
-
-            return args;
-
-        } catch (Exception e)
-        {
-            args.Error = !args.Success ? args.Error + "\r\n" + e.Message : e.Message;
-            return args;
-        } finally
-        {
-            OnOpenCompleted(args);
-        }
-    }
 
     /// <summary>
     /// Opens a new media file (audio/subtitles/video)
@@ -270,16 +213,10 @@ unsafe partial class Player
     /// <returns></returns>
     public OpenCompletedArgs Open(string url, bool defaultPlaylistItem = true, bool defaultVideo = true, bool defaultAudio = true, bool defaultSubtitles = true)
     {
-        if (ExtensionsSubtitles.Contains(GetUrlExtention(url)))
-        {
-            OnOpening(new() { Url = url, IsSubtitles = true});
-            return OpenSubtitles(url);
-        }
-        else
-        {
+
             OnOpening(new() { Url = url });
             return OpenInternal(url, defaultPlaylistItem, defaultVideo, defaultAudio, defaultSubtitles);
-        }
+        
     }
 
     /// <summary>
@@ -525,13 +462,11 @@ unsafe partial class Player
                 decoder.GetVideoFrame(syncMs * (long)10000);
                 VideoDemuxer.Start();
                 AudioDemuxer.Start();
-                SubtitlesDemuxer.Start();
                 DataDemuxer.Start();
                 decoder.PauseOnQueueFull();
 
                 // Initialize will Reset those and is posible that Codec Changed will not be called (as they are not chaning necessary)
                 Decoder_OpenAudioStreamCompleted(null, null);
-                Decoder_OpenSubtitlesStreamCompleted(null, null);
 
                 if (shouldPlay)
                     Play();
@@ -546,7 +481,6 @@ unsafe partial class Player
                     return args;
                 }
 
-                Config.Subtitles.SetEnabled(true);
                 args = decoder.Open(extStream, false, streamIndex);
             }
 
@@ -606,11 +540,7 @@ unsafe partial class Player
             }
             else if (stream is VideoStream vstream)
                 args = decoder.OpenVideoStream(vstream, defaultAudio);
-            else if (stream is SubtitlesStream sstream)
-            {
-                Config.Subtitles.SetEnabled(true);
-                args = decoder.OpenSubtitlesStream(sstream);
-            }
+            
             else if (stream is DataStream dstream)
             {
                 Config.Data.SetEnabled(true);
@@ -645,8 +575,6 @@ unsafe partial class Player
                 OnOpenVideoStreamCompleted((OpenVideoStreamCompletedArgs)args);
             else if (stream is AudioStream)
                 OnOpenAudioStreamCompleted((OpenAudioStreamCompletedArgs)args);
-            else if (stream is SubtitlesStream)
-                OnOpenSubtitlesStreamCompleted((OpenSubtitlesStreamCompletedArgs)args);
             else
                 OnOpenDataStreamCompleted((OpenDataStreamCompletedArgs)args);
         }
@@ -688,8 +616,6 @@ unsafe partial class Player
 
         if (item.ExternalSubtitlesStream != null)
             session.ExternalSubtitlesUrl = item.ExternalSubtitlesStream.Url;
-        else if (decoder.SubtitlesStream != null)
-            session.SubtitlesStream = decoder.SubtitlesStream.StreamIndex;
 
         if (decoder.AudioStream != null)
             session.AudioStream = decoder.AudioStream.StreamIndex;
@@ -699,7 +625,6 @@ unsafe partial class Player
 
         session.CurTime = CurTime;
         session.AudioDelay = Config.Audio.Delay;
-        session.SubtitlesDelay = Config.Subtitles.Delay;
 
         return session;
     }
@@ -718,7 +643,6 @@ unsafe partial class Player
         {
             isVideoSwitch = true;
             isAudioSwitch = true;
-            isSubsSwitch = true;
             isDataSwitch = true;
             requiresBuffering = true;
 
@@ -735,7 +659,6 @@ unsafe partial class Player
             isAudioSwitch = false;
             isVideoSwitch = false;
             sFrame = sFramePrev = null;
-            isSubsSwitch = false;
             dFrame = null;
             isDataSwitch = false;
 
@@ -744,12 +667,6 @@ unsafe partial class Player
                 decoder.PauseDecoders();
                 decoder.GetVideoFrame();
                 ShowOneFrame();
-            }
-            else
-            {   
-                Subtitles.subsText = "";
-                if (Subtitles._SubsText != "")
-                    UI(() => Subtitles.SubsText = Subtitles.SubsText);
             }
         }
         else
@@ -760,16 +677,6 @@ unsafe partial class Player
                 decoder.SeekAudio();
                 aFrame = null;
                 isAudioSwitch = false;
-            }
-            else if (stream.Demuxer.Type == MediaType.Subs)
-            {
-                isSubsSwitch = true;
-                decoder.SeekSubtitles();
-                sFrame = sFramePrev = null;
-                Subtitles.subsText = "";
-                if (Subtitles._SubsText != "")
-                    UI(() => Subtitles.SubsText = Subtitles.SubsText);
-                isSubsSwitch = false;
             }
             else
             {
@@ -836,16 +743,6 @@ unsafe partial class Player
                     if (data.extStream != null)
                         Open(data.extStream, data.resync);
                     else
-                        Open(data.stream, data.resync);
-                }
-                else if (openSubtitles.TryPop(out data))
-                {
-                    openSubtitles.Clear();
-                    if (data.url_iostream != null)
-                        OpenSubtitles(data.url_iostream.ToString());
-                    else if (data.extStream != null)
-                        Open(data.extStream, data.resync);
-                    else if (data.stream != null)
                         Open(data.stream, data.resync);
                 }
                 else
